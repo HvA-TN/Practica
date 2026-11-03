@@ -1,0 +1,19 @@
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+.pytest_cache/
+
+# Generated test output and binaries
+.test_output/
+.test_build/
+*.exe
+
+# Generated aeropendulum measurements and plots (keep locally)
+/practicum2_2/Open_loop/data/
+/practicum2_2/Open_loop/figuren/
+/practicum2_2/Closed_loop/data/
+/practicum2_2/Closed_loop/figuren/
+/practicum2_2/Closed_loop/Archief/Testuitvoer/
