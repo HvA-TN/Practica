@@ -91,26 +91,47 @@ Onderbreek de meetcel om eerder te stoppen. De functie probeert de motor uit te 
 
 ## Closed loop: PID bedienen vanuit Python
 
-De Arduino voert de PID-regeling uit op nominaal 50 Hz. Vanuit [Closed_loop/script.ipynb](Closed_loop/script.ipynb) stel je de doelhoek, `kp`, `ki`, `kd`, `max_pwm` en meetduur in. Voor een nieuwe parameterkeuze hoef je de sketch niet opnieuw te uploaden.
+De Arduino voert de PID-regeling uit met het ingestelde interval `delta_t` (standaard 0.02 s, nominaal 50 Hz). Vanuit [Closed_loop/script.ipynb](Closed_loop/script.ipynb) stel je de doelhoek, `kp`, `ki`, `kd`, `max_pwm` en meetduur in. Voor een nieuwe parameterkeuze hoef je de sketch niet opnieuw te uploaden.
 
-1. Upload met uitgeschakelde motorvoeding [PID_Python_aansturing.ino](Closed_loop/arduino/PID_Python_aansturing/PID_Python_aansturing.ino). Deze gebruikt AS5600 en PID_v1; de libraries staan ook in `Open_loop/Archief/libraries/`.
+1. Upload met uitgeschakelde motorvoeding [PID_Python_aansturing.ino](Closed_loop/arduino/Stap_4_PID_Python_aansturing/Stap_4_PID_Python_aansturing.ino). Deze gebruikt AS5600 en PID_v1; de libraries staan ook in `Open_loop/Archief/libraries/`.
 2. Sluit de Serial Monitor en Plotter en open de notebook vanuit `Closed_loop`. Vul de COM-poort in. De communicatie verloopt op 115200 baud.
-3. Voer met uitgeschakelde motorvoeding de sensorcontrole uit. De werkhoek is `90 - sensorhoek`; controleer nulstand en richting. De Arduino accepteert werkhoeken van -10 tot 80 graden. Een grotere motoruitgang moet een grotere werkhoek geven.
+3. Voer met uitgeschakelde motorvoeding de sensorcontrole uit. De werkhoek is `beginhoek - sensorhoek`; controleer nulstand en richting. De doelhoek mag van -180 tot 180 graden zijn. Studenten vullen bij `beginhoek` hun eigen gemeten sensorhoek in rust in, bijvoorbeeld 89 graden. De werkhoek is dan 0 graden in rust; bij sensorhoek 0 is de werkhoek 89 graden (ongeveer 90). Een grotere motoruitgang moet een grotere werkhoek geven.
 4. Kies met de begeleider een haalbare doelhoek en PWM-grens. Begin met P (`ki = kd = 0`). Schakel de gecontroleerde motorvoeding in en voer de meetcel uit. De regeling begint na de communicatiecontrole, zonder de stabilisatietijd uit open loop.
 5. Onderzoek eerst `kp`, daarna voor PI ook `ki` en voor PID ook `kd`. Laat de arm voor elke proef tot rust komen. Plot de hoek, doelhoek en PWM met de laatste cel.
 
 De functies staan in [closed_loop/meting.py](Closed_loop/closed_loop/meting.py):
 
 ```python
-from closed_loop.meting import controleer_sensor, voer_pid_meting_uit
+from closed_loop.meting import test_hoek, voer_pid_meting_uit
 ```
 
-De Arduino wacht na reset op Python, wist bij iedere start de integrator en stopt na de ingestelde meetduur. De sensorcontrole houdt de motor uit. Een ongeldige sensorstatus, werkhoek buiten het bereik of langer dan 3 seconden geen heartbeat stopt de meting. Bij onderbreken of een fout probeert Python STOP te sturen en bewaart het de al ontvangen data. De fysieke uitschakeling van de motorvoeding blijft bereikbaar.
+De Arduino wacht na reset op Python, wist bij iedere start de integrator en stopt na de ingestelde meetduur. De sensorcontrole houdt de motor uit. Langer dan 3 seconden geen heartbeat stopt de meting. Controleer voor het starten zelf de sensoruitlezing en draairichting. Bij onderbreken of een fout probeert Python STOP te sturen en bewaart het de al ontvangen data. De fysieke uitschakeling van de motorvoeding blijft bereikbaar.
 
-`max_pwm` kan tussen 1 en 120 worden gekozen; 120 is een voorlopige bovengrens uit de bestaande sketch, geen voor elke opstelling geschikte instelling. De meetduur ligt tussen 0.02 en 600 seconden. Hoekoffset en vaste grenzen staan bovenaan de Arduino-sketch; stem wijzigingen af met de begeleider. Bij wijzigingen aan die vaste waarden moeten ook de controles en opgeslagen kalibratiegegevens in het Python-package worden bijgewerkt.
+`max_pwm` kan tussen 0 en 255 worden gekozen. Nul houdt de motor uit. Stel `toon_metingen=True` in om tijd, gecorrigeerde hoek, doelhoek, PWM en duty cycle live te printen; met `False` blijven opslag en grafieken beschikbaar. PWM is een aanstuurwaarde, geen meting van motorvermogen. De beginhoek wordt vanuit de notebook naar de Arduino gestuurd.
 
 ### Meetgegevens
 
-Iedere proef levert een CSV in `Closed_loop/data/` met `tijd_s`, `doelhoek_deg`, `hoek_deg` en `pwm`. De tijd komt van de Arduino en begint bij het startcommando. Het bijbehorende JSON-bestand bewaart de PID-instellingen, meetduur, kalibratie en afloopstatus. Noteer voedingsspanning en motorstroom apart in het labjournaal.
+Iedere proef levert een CSV in `Closed_loop/data/` met een commentaarheader met alle instellingen en daarna `tijd_s`, `hoek_deg` en `pwm`. De tijd komt van de Arduino en begint bij het startcommando. De CSV-header bewaart de PID-instellingen, meetduur, kalibratie en afloopstatus; er wordt geen apart JSON-bestand aangemaakt. Noteer voedingsspanning en motorstroom apart in het labjournaal.
 
-De [closed-loophandleiding](Periode2/Aero_pendulum_PID.tex) beschrijft de proeven voor P, PI en PID. De eerdere handmatig bediende CSV-sketches onder `Periode2/Arduino/` blijven als oudere voorbeelden beschikbaar; gebruik voor de notebook de nieuwe sketch in `Closed_loop/arduino/`.
+
+De nieuwe PID-CSV bevat instellingenregels die beginnen met `#`, gevolgd door `tijd_s,hoek_deg,pwm`. Lees de meetdata in met `pd.read_csv(csv_pad, comment="#")`. De notebook bevat ook code om de instellingen afzonderlijk te tonen. Oudere CSV-bestanden met drie instellingenregels lees je nog met `skiprows=3`. De teruggegeven meetpunten bevatten `[tijd_s, doelhoek_deg, hoek_deg, pwm]`; de notebook plot zowel hoek als PWM.
+
+### Bovengrens voor de werkhoek
+
+Stel `max_hoek` in de closed-loopnotebook in (standaard 120 graden). Dit is de gecorrigeerde hoek vanaf rust. De Arduino controleert de grens bij de start en elke meetstap, voordat de PID de motor aanstuurt. Bij overschrijding wordt PWM nul en stopt de proef; Python meldt de hoekstop en bewaart ontvangen meetpunten. De grens wordt in de CSV-header opgeslagen. Een nieuwe geldige configuratie en bewuste start zijn nodig om weer te regelen. Kies een grens boven de doelhoek met ruimte voor toegestane overshoot. De arm kan na het uitschakelen nog doorbewegen; de controlefrequentie hangt af van `delta_t`. Upload de aangepaste stap 4-sketch en herstart de notebookkernel.
+
+De instelbare hoekgrens loopt van -180 tot 180 graden. De eerste PID-meetcel gebruikt `max_hoek_pid`; de laatste veiligheidsproef gebruikt `max_hoek`. Beide sturen hun eigen grens naar de Arduino; 120 graden is slechts de beginwaarde. Een negatieve grens is een getekende bovengrens, geen absolute waarde. Omdat de werkhoek omslaat bij +/-180 graden, wordt een bovengrens van 180 niet overschreden; gebruik een lagere grens om voor die omslag te stoppen.
+
+## Stap 5: PID-prestaties en gain scheduling
+
+Open [Closed_loop/stap_5.ipynb](Closed_loop/stap_5.ipynb). Gebruik dezelfde stap 4-sketch. De nieuwe code staat in `Closed_loop/closed_loop/tuning.py` en voegt geen automatische reeks motorproeven toe: je kiest en start iedere proef afzonderlijk.
+
+1. Vul een eerder geteste basis-PID, twee haalbare doelhoeken en de prestatie-eisen in.
+2. Maak een klein rooster van instellingen en meet per combinatie minstens drie herhalingen vanaf rust.
+3. Vergelijk insteltijd, overshoot, eindfout, integraal van de absolute fout (IAE) en tijd op maximale PWM. De berekeningen gebruiken Arduino-tijdstempels. Een insteltijd vereist dat de hoek tot het einde binnen de band blijft, met de ingestelde bevestigingsduur.
+4. Selecteer per doelhoek de snelste geschikte combinatie. Foutstatus, gaten in de data, onvolledige registraties en ongunstige herhalingen blijven zichtbaar; ze leveren geen geldige winnaar op.
+5. Kies PID-waarden voor een nieuwe doelhoek met `kies_pid`: dichtstbijzijnde werkpunt of lineaire interpolatie. Er wordt niet geextrapoleerd. Vergelijk met de vaste basis-PID bij dezelfde doelhoek.
+
+Dit is scheduling op doelhoek **tussen proeven**: de gains blijven tijdens een proef constant. Interpolatie is een nieuwe kandidaat, geen bewezen verbetering. Houd meetduur, interval, beginhoek, PWM-grens, hoekgrens en voeding gelijk. Controleer de werkelijke beginpositie zelf; de eerste geregistreerde hoek is slechts een benadering van de beginconditie.
+
+Resultaten, meetbestandenlijsten en gain-schema worden als CSV in `Closed_loop/data/` bewaard. Gebruik voor analyse de huidige PID-CSV's met commentaarheader. De notebook bevat geen installatiecel. De nieuwe functies gebruiken NumPy en pandas voor analyse; de benodigde omgeving wordt door de docent toegelicht.

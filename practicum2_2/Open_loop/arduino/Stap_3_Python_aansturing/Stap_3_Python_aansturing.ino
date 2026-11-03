@@ -1,4 +1,3 @@
-
 #include <Wire.h>
 #include <AS5600.h>
 
@@ -6,11 +5,18 @@
 // 1. HARDWARE
 // ==========================================
 
-const int enablePin = 9;
-const int motorPin1 = 10;
-const int motorPin2 = 11;
+// AS5600-hoeksensor (I2C)
+const int sensorSDA = A4;
+const int sensorSCL = A5;
+const uint8_t sensorAdres = 0x36;
 
-AS5600 sensor;
+// L298N-motordriver
+const int enablePin = 9;   // ENA (PWM)
+const int motorPin1 = 10;  // IN1
+const int motorPin2 = 11;  // IN2
+
+// Sensorobject gekoppeld aan I2C-interface
+AS5600 sensor(&Wire);
 
 // ==========================================
 // 2. VARIABELEN
@@ -144,19 +150,26 @@ void leesSerieel() {
 
 void setup() {
 
+  Serial.begin(115200);
+
+  // I2C initialiseren
+  // UNO R4 Minima: SDA = A4, SCL = A5
   Wire.begin();
+
+  // Sensor initialiseren
   sensor.begin();
 
+  // Motorpinnen configureren
   pinMode(enablePin, OUTPUT);
   pinMode(motorPin1, OUTPUT);
   pinMode(motorPin2, OUTPUT);
 
-  digitalWrite(motorPin1, LOW);
-  digitalWrite(motorPin2, HIGH);
-
+  // Motor aanvankelijk uitschakelen
   analogWrite(enablePin, 0);
 
-  Serial.begin(115200);
+  // Draairichting instellen
+  digitalWrite(motorPin1, LOW);
+  digitalWrite(motorPin2, HIGH);
 
   laatste_heartbeat_ms = millis();
 }
@@ -170,7 +183,7 @@ void loop() {
   // A. Verwerk commando's vanuit Python
   leesSerieel();
 
-  // Lees de tijd na commando's die de heartbeat kunnen bijwerken.
+  // Lees de tijd na commando's die de heartbeat kunnen bijwerken
   unsigned long tijd = millis();
 
   // B. Watchdog

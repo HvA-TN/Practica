@@ -24,6 +24,20 @@ struct MockSerial {
     std::ostringstream s; s << std::fixed << std::setprecision(digits) << value;
     outgoing += s.str();
   }
+  void println(double v, int d) { print(v, d); outgoing += "\n"; }
   template<class T> void println(T value) { print(value); outgoing += "\n"; }
 };
 extern MockSerial Serial;
+
+#include <cstdlib>
+#include <cctype>
+class String : public std::string {
+public:
+ using std::string::string;
+ String(const std::string &s): std::string(s) {}
+ void trim() { auto a=find_first_not_of(" \r\n\t"); if(a==npos) clear(); else *this=substr(a,find_last_not_of(" \r\n\t")-a+1); }
+ bool startsWith(const char *s) const { return find(s)==0; }
+ String substring(size_t n) const { return substr(n); }
+ long toInt() const { return std::strtol(c_str(), nullptr, 10); }
+};
+inline bool isDigit(char c) { return std::isdigit((unsigned char)c); }

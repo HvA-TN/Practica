@@ -1,23 +1,37 @@
 #include <Wire.h>
 #include <AS5600.h>
 
-// Stap 1: sluit alleen de AS5600-hoeksensor aan.
+// Instellingen
+
 const unsigned long meetinterval_ms = 100;
-AS5600 sensor;
+
+// AS5600-hoeksensor (I2C)
+const int sensorSDA = A4;
+const int sensorSCL = A5;
+const uint8_t sensorAdres = 0x36;
+
+// Sensorobject
+AS5600 sensor(&Wire);
+
 
 void setup() {
-  Wire.begin();
-  sensor.begin();
   Serial.begin(115200);
+
+  // I2C initialiseren
+  // UNO R4 Minima: SDA = A4, SCL = A5
+  Wire.begin();
+
+  // Sensor initialiseren
+  sensor.begin();
 }
 
 void loop() {
-  // De sensor geeft 4096 stappen per volledige omwenteling.
+  // Hoek uitlezen (12-bit: 0 t/m 4095)
   float hoek_graden = sensor.readAngle() * 360.0 / 4096.0;
 
-  // Bekijk de hoek in de Serial Monitor of Serial Plotter.
+  // Hoek naar Serial Monitor of Serial Plotter sturen
   Serial.print("Hoek:");
-  Serial.println(hoek_graden, 2);
+  Serial.println(hoek_graden, 3);
 
   delay(meetinterval_ms);
 }
