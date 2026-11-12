@@ -1,4 +1,4 @@
-"""Exercise the actual step-5 firmware using a simulated Arduino and PID target."""
+"""Exercise the actual closed-loop firmware using a simulated Arduino and PID target."""
 from pathlib import Path
 import shutil
 import subprocess
@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class FirmwareTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("g++"), "g++ is required for firmware simulation")
     def test_rate_limits_and_all_stop_paths(self):
-        sketch = ROOT / "arduino/Stap_5_PWM_begrenzing/Stap_5_PWM_begrenzing.ino"
+        sketch = ROOT / "arduino/Stap_4_Closed_loop/Stap_4_Closed_loop.ino"
         source = "\n".join(line for line in sketch.read_text(encoding="utf-8").splitlines()
                            if not line.startswith("#include"))
         stub = (ROOT / "tests/arduino_stub.h").read_text(encoding="utf-8")
@@ -23,6 +23,10 @@ void startTest(){
 }
 int main(){
  assert(maxPWMStap==0);
+ assert(configurePID("-90,2,0,0,120,30000,20,0,180"));
+ assert(configurePID("-90,2,0,0,120,30000,20,0,-89"));
+ assert(!configurePID("-91,2,0,0,120,30000,20,0,180"));
+ assert(!configurePID("-90,2,0,0,120,30000,20,0,-90"));
  startTest();verwerkCommando("HELLO");assert(maxPWMStap==0);
  verwerkCommando("CONFIG:20,2,0,0,120,30000,20,0,180");
  verwerkCommando("START");testTime=20;loop();assert(pwm==120);

@@ -46,7 +46,7 @@ class Clock:
 
 
 class Arduino:
-    def __init__(self, clock, scenario, step=4):
+    def __init__(self, clock, scenario, step=None):
         self.step = step
         self.clock, self.scenario = clock, scenario
         self.commands, self.queue = [], []
@@ -70,7 +70,7 @@ class Arduino:
         if command == "HELLO":
             self.queue.append("PID_READY")
         elif command == "VERSIE":
-            self.queue.append(f"PID_STAP{self.step}")
+            self.queue.append("PID_UNIFIED_V1" if self.step is None else f"PID_STAP{self.step}")
         elif command.startswith("OFFSET:"):
             self.queue.append("OFFSET_OK")
         elif command == "ANGLE":
@@ -127,7 +127,7 @@ class MeasurementTests(unittest.TestCase):
         arduino = Arduino(clock, scenario)
         with patch.object(m.serial, "Serial", return_value=arduino), \
                 patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output):
-            call = lambda: m.voer_pid_meting_uit(meetduur=2, sensorcontrole=check)
+            call = lambda: m.voer_pid_meting_uit(opslaan=True, meetduur=2, sensorcontrole=check)
             if error:
                 with self.assertRaises(error):
                     call()
@@ -137,6 +137,26 @@ class MeasurementTests(unittest.TestCase):
                 self.assertEqual(path.parent, self.output)
         self.assertEqual(arduino.commands[-1], "STOP")
         return arduino
+
+    def test_no_storage_by_default_or_when_disabled(self):
+        for scenario in ("normal", "interrupt", "sensor"):
+            for extra in ({}, {"opslaan": False}):
+                with self.subTest(scenario=scenario, extra=extra):
+                    clock = Clock()
+                    arduino = Arduino(clock, scenario)
+                    with patch.object(m.serial, "Serial", return_value=arduino), \
+                            patch.object(m, "time", clock), \
+                            patch.object(m, "_bewaar") as save:
+                        if scenario == "sensor":
+                            with self.assertRaises(RuntimeError):
+                                m.voer_pid_meting_uit(meetduur=2, toon_metingen=False, **extra)
+                        else:
+                            points, path = m.voer_pid_meting_uit(
+                                meetduur=2, toon_metingen=False, **extra)
+                            self.assertTrue(points)
+                            self.assertIsNone(path)
+                        save.assert_not_called()
+                    self.assertEqual(arduino.commands[-1], "STOP")
 
     def test_complete_and_heartbeat(self):
         arduino = self.run_case("normal")
@@ -180,7 +200,7 @@ class MeasurementTests(unittest.TestCase):
         arduino = Arduino(clock, "interrupt")
         with patch.object(m.serial, "Serial", return_value=arduino), \
                 patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output):
-            points, _ = m.voer_pid_meting_uit(meetduur=0.02, delta_t=0.1,
+            points, _ = m.voer_pid_meting_uit(opslaan=True, meetduur=0.02, delta_t=0.1,
                                             mode="continuous")
         self.assertGreater(points[0][0], 0.02)
         self.assertIn("CONFIG:40.0,0.0,0.0,0.0,120,20,100,1,180.0", arduino.commands)
@@ -191,14 +211,14 @@ class MeasurementTests(unittest.TestCase):
         self.assertEqual(meta["status"], "onderbroken")
 
     def test_bounds_and_print_option(self):
-        for limit, goal, show in ((0, -10, False), (255, 120, True)):
+        for limit, goal, show in ((0, -90, False), (255, 120, True)):
             clock = Clock()
             arduino = Arduino(clock, "normal")
             output = io.StringIO()
             with patch.object(m.serial, "Serial", return_value=arduino), \
                     patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output), \
                     redirect_stdout(output):
-                points, _ = m.voer_pid_meting_uit(meetduur=2, max_pwm=limit,
+                points, _ = m.voer_pid_meting_uit(opslaan=True, meetduur=2, max_pwm=limit,
                                                  doelhoek=goal, beginhoek=89,
                                                  toon_metingen=show)
             self.assertIn("OFFSET:89", arduino.commands)
@@ -206,7 +226,7 @@ class MeasurementTests(unittest.TestCase):
             self.assertEqual("| PWM" in output.getvalue(), show)
 
     def test_config_transmits_full_angle_range(self):
-        for goal, limit in ((-10, 0), (140, 150), (180, 180)):
+        for goal, limit in ((-90, -89), (-10, 0), (140, 150), (180, 180)):
             clock = Clock()
             arduino = Arduino(clock, "normal")
             with patch.object(m.serial, "Serial", return_value=arduino), \
@@ -233,7 +253,7 @@ class MeasurementTests(unittest.TestCase):
                 with patch.object(arduino, "write", side_effect=strict_write), \
                         patch.object(m.serial, "Serial", return_value=arduino), \
                         patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output):
-                    points, path = function(meetduur=2, toon_metingen=False, **extra)
+                    points, path = function(opslaan=True, meetduur=2, toon_metingen=False, **extra)
                 self.assertTrue(points)
                 self.assertEqual(arduino.commands[-1], "STOP")
                 meta = lees_header(path)
@@ -242,8 +262,8 @@ class MeasurementTests(unittest.TestCase):
     def test_safety_bounds_do_not_open_port(self):
         with patch.object(m.serial, "Serial") as port:
             for kwargs in ({"max_hoek": 39}, {"max_hoek": 181},
-                           {"max_hoek": float("nan")}, {"max_hoek": -10},
-                           {"doelhoek": -11}):
+                           {"max_hoek": float("nan")}, {"max_hoek": -90},
+                           {"doelhoek": -91}):
                 with self.assertRaises(ValueError):
                     m.voer_pid_meting_uit(**kwargs)
             port.assert_not_called()
@@ -251,24 +271,25 @@ class MeasurementTests(unittest.TestCase):
     def test_pwm_limiter_configuration_and_metadata(self):
         for rate in (0, 20, 1):
             clock = Clock()
-            arduino = Arduino(clock, "normal", step=5)
+            arduino = Arduino(clock, "normal")
             with patch.object(m.serial, "Serial", return_value=arduino), \
                     patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output):
-                _, path = m.voer_pid_stap5_uit(meetduur=2, toon_metingen=False,
-                                               max_pwm_stap=rate)
+                _, path = m.voer_pid_meting_uit(opslaan=True, meetduur=2, toon_metingen=False,
+                                               max_hoek=120, max_pwm_stap=rate)
             self.assertIn(f"PWMSTAP:{rate}", arduino.commands)
             self.assertLess(arduino.commands.index(f"PWMSTAP:{rate}"),
                             arduino.commands.index("START"))
             self.assertEqual(lees_header(path)["max_pwm_stap"], rate)
+            self.assertEqual(lees_header(path)["max_hoek"], 120)
             self.assertEqual(arduino.commands[-1], "STOP")
 
     def test_old_sketch_never_starts_with_requested_limiter(self):
         clock = Clock()
-        arduino = Arduino(clock, "old_slew", step=5)
+        arduino = Arduino(clock, "old_slew")
         with patch.object(m.serial, "Serial", return_value=arduino), \
                 patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output):
-            with self.assertRaisesRegex(RuntimeError, "Stap_5_PWM_begrenzing"):
-                m.voer_pid_stap5_uit(max_pwm_stap=100)
+            with self.assertRaisesRegex(RuntimeError, "Stap_4_Closed_loop"):
+                m.voer_pid_meting_uit(max_pwm_stap=100)
         self.assertNotIn("START", arduino.commands)
         self.assertEqual(arduino.commands[-1], "STOP")
 
@@ -276,12 +297,12 @@ class MeasurementTests(unittest.TestCase):
         with patch.object(m.serial, "Serial") as port:
             for rate in (-1, 256, 0.5, float("nan"), float("inf")):
                 with self.assertRaises(ValueError):
-                    m.voer_pid_stap5_uit(max_pwm_stap=rate)
+                    m.voer_pid_meting_uit(max_pwm_stap=rate)
             port.assert_not_called()
 
     def test_wrong_step_firmware_never_starts(self):
-        for function, firmware_step in ((m.voer_pid_stap4_uit, 5),
-                                        (m.voer_pid_stap5_uit, 4)):
+        for function, firmware_step in ((m.voer_pid_meting_uit, 5),
+                                        (m.voer_pid_meting_uit, 4)):
             clock = Clock()
             arduino = Arduino(clock, "normal", step=firmware_step)
             with patch.object(m.serial, "Serial", return_value=arduino), \
@@ -291,14 +312,14 @@ class MeasurementTests(unittest.TestCase):
             self.assertNotIn("START", arduino.commands)
             self.assertEqual(arduino.commands[-1], "STOP")
 
-    def test_step5_without_rate_sends_no_limiter_setting(self):
+    def test_without_rate_sends_no_limiter_setting(self):
         clock = Clock()
-        arduino = Arduino(clock, "normal", step=5)
+        arduino = Arduino(clock, "normal")
         with patch.object(m.serial, "Serial", return_value=arduino), \
                 patch.object(m, "time", clock), patch.object(m, "DATA_MAP", self.output):
-            _, path = m.voer_pid_stap5_uit(meetduur=2, toon_metingen=False)
+            _, path = m.voer_pid_meting_uit(opslaan=True, meetduur=2, toon_metingen=False)
         self.assertFalse(any(c.startswith("PWMSTAP:") for c in arduino.commands))
-        self.assertEqual(lees_header(path)["stap"], 5)
+        self.assertEqual(lees_header(path)["max_hoek"], 180.0)
         self.assertNotIn("max_pwm_stap", lees_header(path))
 
     def test_invalid_parameters_do_not_open_port(self):

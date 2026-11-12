@@ -116,19 +116,19 @@ def voer_open_loop_meting_uit(com_poort="COM3", baudrate=115200, pwm=20, meetduu
     return metingen, csv_pad
 
 
-def test_hoek(com_poort="COM3", meetduur=10.0, delta_t=0.1):
-    """Meet de ruwe hoek met stap 3 of de nieuwe stap 4-basis; PWM blijft nul.
+def test_hoek(com_poort="COM3", meetduur=10.0, delta_t=0.1,opslaan=False):
+    """Meet de ruwe hoek met stap 3 of Stap_4_Closed_loop.ino; PWM blijft nul.
 
     Retourneert tijd/hoek-paren. Tijd komt van de Arduino, relatief aan het
     eerste meetpunt. CSV wordt automatisch opgeslagen in Closed_loop/data.
     """
     metingen, _ = voer_open_loop_meting_uit(
         com_poort=com_poort, pwm=0, meetduur=meetduur, delta_t=delta_t,
-        stabilisatietijd=0, opslaan=True, toon_metingen=True)
+        stabilisatietijd=0, opslaan=opslaan, toon_metingen=True)
     return metingen
 
 
-KOLOMMEN = ["tijd_s", "hoek_deg", "pwm"]
+KOLOMMEN = ["tijd", "hoek", "pwm"]
 
 
 def _stuur(arduino, commando):
@@ -171,54 +171,25 @@ def _bewaar(metingen, instellingen, status):
     return pad
 
 
-def voer_pid_stap4_uit(com_poort="COM4", doelhoek=40.0, kp=0.0, ki=0.0,
-                       kd=0.0, max_pwm=120, meetduur=30.0, sensorcontrole=False,
-                       delta_t=0.02, mode="fixed", beginhoek=90.0,
-                       toon_metingen=True, max_hoek=180.0):
-    """Stap 4: PID zonder PWM-veranderingsbegrenzing; upload Stap_4_PID.ino."""
-    return _voer_pid_meting_uit(
-        com_poort, doelhoek, kp, ki, kd, max_pwm, meetduur, sensorcontrole,
-        delta_t, mode, beginhoek, toon_metingen, max_hoek,
-        max_pwm_stap=None, _stap=4)
-
-
-def voer_pid_stap5_uit(com_poort="COM4", doelhoek=40.0, kp=0.0, ki=0.0,
-                       kd=0.0, max_pwm=120, meetduur=30.0, sensorcontrole=False,
-                       delta_t=0.02, mode="fixed", beginhoek=90.0,
-                       toon_metingen=True, max_hoek=180.0, max_pwm_stap=None):
-    """Stap 5: PID met PWM-limiter; upload Stap_5_PWM_begrenzing.ino.
-
-    max_pwm_stap is de maximale positieve sprong per regelstap (geheel getal 1-255).
-    Laat max_pwm_stap weg voor een proef zonder limiter: er wordt geen PWMSTAP verstuurd.
-    Geef een positieve waarde op om de limiter in te schakelen; max_pwm is de amplitudegrens.
-    """
-    return _voer_pid_meting_uit(
-        com_poort, doelhoek, kp, ki, kd, max_pwm, meetduur, sensorcontrole,
-        delta_t, mode, beginhoek, toon_metingen, max_hoek,
-        max_pwm_stap=max_pwm_stap, _stap=5)
-
-
-# Compatibiliteit voor bestaande verdiepingsnotebooks: dit is uitsluitend stap 4.
-voer_pid_meting_uit = voer_pid_stap4_uit
-
-
-def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
+def voer_pid_meting_uit(com_poort="COM4", doelhoek=40.0, kp=0.0, ki=0.0,
                        kd=0.0, max_pwm=120, meetduur=30.0, sensorcontrole=False,
                        delta_t=0.02, mode="fixed", beginhoek=90.0, toon_metingen=True, max_hoek=180.0,
-                       max_pwm_stap=None, _stap=4):
-    """Retourneer (meetpunten, csv_pad); sla data en instellingen automatisch op.
+                       max_pwm_stap=None, opslaan=False):
+    """Retourneer (meetpunten, csv_pad); opslaan staat standaard uit.
 
-    Zonder PWM-limiter: Stap_4_PID.ino. Met max_pwm_stap: Stap_5_PWM_begrenzing.ino.
-    Stap 4 gebruikt geen limiter; stap 5 verstuurt PWMSTAP alleen bij een opgegeven instelling.
-    Bij stap 5 schakelt 0 de limiter uit.
-    De begrenzing geldt alleen omhoog; dalende PWM wordt direct overgenomen.
-    Gebruik voor de hoekopdrachten Stap_4_PID.ino. max_hoek is standaard 180;
-    geef bijvoorbeeld max_hoek=120 mee om de stopgrens te verlagen.
+    Met opslaan=True worden data en instellingen als CSV bewaard, ook bij
+    onderbreking of fouten na ontvangen meetpunten. Anders is csv_pad None.
+
+    Upload eenmaal Stap_4_Closed_loop.ino voor stap 4.
+    max_hoek is standaard 180 graden; geef bijvoorbeeld max_hoek=120 mee.
+    max_pwm_stap=None of 0 schakelt de PWM-stapbegrenzing uit.
+    Een geheel getal van 1 t/m 255 begrenst de stijging per regelstap;
+    dalende PWM en stops worden direct overgenomen.
     Delta T bepaalt het meet- en PID-interval (0.02-1 s).
     Fixed stopt na meetduur; continuous loopt tot een celonderbreking.
     toon_metingen toont tijd, werkhoek, doelhoek, PWM en duty cycle.
     max_pwm begrenst de PID-uitgang (0-255; nul houdt de motor uit). Bij sensorcontrole blijft
-    de motor uit. Onderbreken bewaart de ontvangen data en probeert STOP te sturen.
+    de motor uit. Onderbreken behoudt de ontvangen data en probeert STOP te sturen.
     De doelhoek en PWM-grens worden door de Arduino gecontroleerd.
     Werkhoek = sensorhoek - beginhoek, omgerekend naar -180..180 graden.
     """
@@ -232,10 +203,10 @@ def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
     waarden = (doelhoek, kp, ki, kd, meetduur, delta_t, beginhoek, max_hoek)
     if not all(math.isfinite(v) for v in waarden):
         raise ValueError("Alle instellingen moeten eindige getallen zijn.")
-    if not -10 < max_hoek <= 180:
-        raise ValueError("max_hoek moet groter dan -10 en maximaal 180 graden zijn.")
-    if not -10 <= doelhoek <= max_hoek:
-        raise ValueError("Doelhoek moet tussen minHoek (-10) en max_hoek liggen.")
+    if not -90 < max_hoek <= 180:
+        raise ValueError("max_hoek moet groter dan -90 en maximaal 180 graden zijn.")
+    if not -90 <= doelhoek <= max_hoek:
+        raise ValueError("Doelhoek moet tussen minHoek (-90) en max_hoek liggen.")
     if not all(0 <= v <= 1000 for v in (kp, ki, kd)):
         raise ValueError("PID-parameters moeten tussen 0 en 1000 liggen.")
     if not isinstance(max_pwm, int) or not 0 <= max_pwm <= 255:
@@ -256,8 +227,7 @@ def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
                         max_hoek=max_hoek, hoekoffset_deg=beginhoek, hoekgrenzen_deg=[-180, 180], toon_metingen=toon_metingen)
     if max_pwm_stap is not None:
         instellingen["max_pwm_stap"] = max_pwm_stap
-    instellingen["stap"] = _stap
-    print(f"Stap {_stap}: max_pwm={max_pwm}, limiter="
+    print(f"PID: max_pwm={max_pwm}, limiter="
           f"{max_pwm_stap if max_pwm_stap is not None else 'uit'} telwaarden/regelstap")
     if max_pwm == 0:
         print("max_pwm=0: communicatieproef; motoruitgang blijft nul.")
@@ -271,11 +241,10 @@ def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
                 arduino.reset_input_buffer()
                 _commando(arduino, "HELLO", "PID_READY")
                 try:
-                    _commando(arduino, "VERSIE", f"PID_STAP{_stap}")
+                    _commando(arduino, "VERSIE", "PID_UNIFIED_V1")
                 except (RuntimeError, TimeoutError) as exc:
-                    sketch = "Stap_4_PID.ino" if _stap == 4 else "Stap_5_PWM_begrenzing.ino"
                     raise RuntimeError(
-                        f"Verkeerde of verouderde sketch: stap {_stap} verwacht {sketch}. "
+                        "Verkeerde of verouderde sketch: upload Stap_4_Closed_loop.ino. "
                         "Upload de bijgewerkte sketch. De motor is niet gestart."
                     ) from exc
                 _commando(arduino, f"OFFSET:{beginhoek}", "OFFSET_OK")
@@ -287,7 +256,7 @@ def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
                     if "ERROR:CONFIG" in str(exc):
                         raise RuntimeError(
                             f"PID-configuratie geweigerd: {config}. "
-                            "Controleer instellingen en upload de gezamenlijke Stap_4_PID-sketch."
+                            "Controleer instellingen en upload de gezamenlijke Stap_4_Closed_loop-sketch."
                         ) from exc
                     raise
                 if max_pwm_stap is not None:
@@ -295,7 +264,7 @@ def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
                         _commando(arduino, f"PWMSTAP:{max_pwm_stap}", "PWMSTAP_OK")
                     except (RuntimeError, TimeoutError) as exc:
                         raise RuntimeError(
-                            "PWM-limiter niet bevestigd. Upload Stap_5_PWM_begrenzing.ino."
+                            "PWM-limiter niet bevestigd. Upload Stap_4_Closed_loop.ino."
                         ) from exc
                 _commando(arduino, "START", "STARTED")
                 print("Sensorcontrole gestart." if sensorcontrole else "PID-meting gestart.")
@@ -345,9 +314,7 @@ def _voer_pid_meting_uit(com_poort="COM3", doelhoek=40.0, kp=0.0, ki=0.0,
                 except (serial.SerialException, OSError) as exc:
                     print(f"STOP kon niet worden verzonden: {exc}")
     finally:
-        if metingen:
+        if opslaan and metingen:
             csv_pad = _bewaar(metingen, instellingen, status)
     print(f"Aantal meetpunten: {len(metingen)}")
     return metingen, csv_pad
-
-
