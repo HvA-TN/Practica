@@ -8,7 +8,7 @@ try:
     import serial
 except ImportError:
     sys.modules["serial"] = types.SimpleNamespace(Serial=None)
-from closed_loop import meting
+from leerjaar_2.practicum2_2.Closed_loop.closed_loop import meting
 
 class HoekTest(unittest.TestCase):
     def test_hoek_gebruikt_stap3_met_motor_uit(self):
